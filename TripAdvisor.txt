@@ -1,0 +1,241 @@
+							RECOMMENDER SYSTEM
+(Please open this .txt file in notepad or textpad)
+This problem closely resembles the netflix movie rating challenge, except that here ratings are not given for supervised learning. 
+But once implicit ratings are generated as follows, top techniques employed in netflix challenge can be used here, along with some extra tweeks.
+
+Recommender system that is proposed in the write up is an ensemble of multiple models.
+					Reservation table 
+USER ID    ACCOMMODATION ID	DESTINATION ID	CHECK-IN   CHECK-OUT  RESERVATION DATE	PRICE(1k $)	USER LOCATION	TRAVELLER TYPE
+1		2			8	 12-02-2015 12-05-2015	1-05-2015	 2		   INDIA	  CULTURAL
+...
+
+
+Based on the above table create meta features such as season of travel, distance of destination from user location, duration of trip, 
+Model 1: Based on  percentage match between user preferences(attributes) and destination attributes.
+We will have to create Destination table and User Profile table based on 2 years data.
+Let destination attributes be – Price in thousand dollars, museums(1 or 0),beach(1 or 0),temples(1 or 0) ….and so on…
+Destination ID     Price   Museums   Beach   Temple  Casino ….. General Prefernece   Summer	Winter	Autumn ...
+      1             8        1        0          1     0       0.2                      0.05       0.1      0.1                                                                                                                                                          
+      2             12       0        1          0     1       0.1			0.1        0	    0
+      …..
+      n		    13	     1        1          0      1      0.3			0.3	   0.005    0
+ 										     sum=1	   sum=1    sum=1 ...
+Here General Prefernce is the percentage of users visited this place.
+
+Similarly user profile table can be:
+      User ID       Avg Price Museums  Beach   Temple    Casino  Distance to Destination(1000 km)   Max Price   
+      1             12        0.5      0.3      0.1    0.4                  2.5                         15                                                                                                                                              
+      2             8.5       0.1      0.6      0.3     0   		    3.9				20	   
+      …..
+      n		    20.9      0.1      0.6      0.3    0.1		    5.6				30.5	   
+      G		    10.3      0.3      0.4      0.1    0.2		    4.5				60	   
+      This is constructed based on if the user likes museumsm, beaches etc based on his previous history. This is done by taking percentage of places he visited had
+      this attributes. Price is the average of the packages chosen by that user.
+      
+      G is the general user, which is users' preference in general.
+      
+      Now when a new user comes on to the site, if we have his user ID in our user profile table, we match his profile features against every destination features in destination table.
+      
+      User ID=1;
+      User ID 1 vs Destination ID 1 -> Percentage matches per attribute:
+      price: calculated using formula: let PU = Avg Price from user table, PD -> price from Destination table. PM = percentage match(0 to 1)
+      					 if(PU>=PD):PM=1
+      					 else:PM=1/exp((PD-PU)/PU)
+      for user ID 1 vs Destination ID 1 -> PM = 1;
+      
+      Museums: calculated using the formula: let MD = Museum attribute value from destination table.
+      						 MU = Museum attribute value from  user table.
+      						 PM(percentage match) =if(MD==1): MU;
+      						 			else:1-MU
+      for user ID 1 vs Destination ID 1 -> PM = 1-(1-0.5) = 0.5			
+      And it follows for other attributes like beach, temple, casino etc.
+      
+      For distance to destination: let DD = distance to destination;
+      					DU =  average distance that user likes to travel from user profile table,
+      					then PM = (if DD < DU):1;
+      						 else:1/exp((DD-DU)/PU)
+      for user ID 1 vs Destination ID 1 let -> PM = 1;
+      
+      Based on these attributes, take the average percenatage match: 
+      for user ID 1 vs destination ID 1 -> average PM = (1+0.5+0.7+0.1+0.6+1)6 = 0.65
+      Similarly we do it for other destination IDs, and accordingly rank them to make recommendations. Here we filter out places already visited by user and give less score
+      to destinations where cost is substantially greater than max money spent by the user in past. 
+      The cost factor is calculated based on the variance of money spent by the user.
+      
+      We also give more importance to places usually visited during this season based on destination table; this factor is used for filtering based on seasons.
+      This factor can usually be multiplied to PM calculated earlier,
+      for user id 1 and dest id 1, if season is winter, the score is: 0.65*0.1 = 0.065.
+      
+      If user is not in the user table, then the score is calculated as per, General user preferences.
+      
+      Once the score for each destination is calculated, score is normalized to have a sum=1.
+      
+      
+      
+      Model 2....n: This model is based on little bit of machine learning, where we need to create implicit rating for destinations by the user who visited it based on
+      the user profile table. That is percentage match for a particular destination is used as the rating to the destination.
+      Note the rating is created for only the places visited by the user. If a user doesn't visit a place, the rating for that (user,destination) is not generated.
+      
+      For machine learning to be carried out, the training data contains following entries:
+      
+      		USER Preferences							Destination Attributes
+      		
+ userID  (Avg-Price Museums Beach Temple Casino Dist-to-dest(1000 km) Max Price travel type, month...)    DestID (Price Museums Beach Temple Casino..General Prefernece Summer Winter Autumn)  User Rating
+ 1     													    9
+ 1													    3		
+ 1													    4
+ 2													    9
+ 2													    1
+ 3													    3
+
+
+This problem now becomes similar to Netflix movie rating problem. Hence all the techniques used in the best model in that contest such as simple SVDm factor models, accounting for
+temporal effect, neighborhood models can be used.
+For simplicity linear regression using stochastic gradient descent can be used to learn the ratings from the data(note userID, DestID are not used while training).
+If the data is huge, even neural network (I usually use theano/torch) model can be built.
+
+
+Finally a weighted ensemble of all these models is used to give the final ranking to destinations which will be finally recommended to the user.
+Weights are desided based on the performance of individual models on the hold out data set.
+
+
+
+For lack of time, I couldn't write working scripts to tackle Trip Advisor problem, which I had planned to do by generating dummy data through script and trying to learn
+the data using few ML techniques.
+Below is the code, I usually use for solving Kaggle(www.kaggle.com) problems:
+Note: The below is a general code and doesn't have any relevance to the Trip Advisor problem specifically. It is just a justificatioin that the below script can be modified to learn a boosted tree
+for data above.
+##########################################################################################
+import pandas as pd
+import numpy as np
+from sklearn import ensemble, preprocessing
+import xgboost as xgb
+print "what's up"
+print "how are you"
+params = {"objective": "multi:softprob",
+          "eta": 0.02,# used to be 0.2 or 0.1
+          "max_depth": 15, # used to be 5 or 6
+          "min_child_weight": 1,
+                  "max_delta_step": 6,
+          "silent": 1,
+          "colsample_bytree": 0.7,
+                  "subsample": 0.8,
+                  "eval_metric" : "mlogloss",
+          "seed": 1,
+                  "num_class": 38}
+plst = list(params.items())
+#Using 5000 rows for early stopping.
+#offset = 4000
+
+num_rounds = 900
+
+print "reading trainMat.csv"
+train = pd.read_csv('trainMat.csv',index_col=None, header=None)
+upcTrain = pd.read_csv('upcCorrTr.csv',index_col=None, header=None)
+upcTrain = np.array(upcTrain)
+train = np.array(train)
+print train.shape
+#test = pd.read_csv('newtest.csv')
+labels = train[:,-1]
+
+train = train[:,1:-1]
+print train.shape
+
+train = np.concatenate((train,upcTrain),axis=1)
+del(upcTrain)
+# object array to float
+train = train.astype(float)
+print train.shape
+##cross-validation
+xgtrain = xgb.DMatrix(train, label=labels)
+del(train)
+del(labels)
+print "starting CV run"
+xgb.cv(params, xgtrain, num_rounds, nfold=4)
+
+print "Starting model run"
+watchlist = [(xgtrain, 'train')]
+gbm2 = xgb.train(params, xgtrain, num_rounds, watchlist)
+
+#save model
+print "save model"
+gbm2.save_model('modelxgb2.model')
+gbm2.dump_model('dump.raw2.txt')
+
+del(xgtrain)
+
+print "reading testMat.csv"
+test = pd.read_csv('testMat.csv', index_col=None, header=None)
+
+#test.drop('ID',inplace=True,axis=1)
+#test.drop(test.columns[0],inplace=True,axis=1)
+test = np.array(test)
+test = test[:,1:]
+upcTest = pd.read_csv('upcCorrTe.csv',index_col=None, header=None)
+upcTest = np.array(upcTest)
+test = np.concatenate((test,upcTest),axis=1)
+del(upcTest)
+test = test.astype(float)
+xgtest = xgb.DMatrix(test)
+print "predicting preds2"
+preds = gbm2.predict(xgtest)
+
+
+preds = pd.DataFrame(preds)
+print "writing to xgbSol2.csv"
+preds.to_csv('xgbSol2.csv',header=None, index=False)
+
+
+
+####################################################################################
+
+
+###################################################################################
+Example neural network(multi layer perceptron) script - using scikit neural network.
+
+
+import cPickle as pickle
+import numpy as np
+import scipy.sparse
+import pandas as pd
+import array
+from sknn.mlp import Classifier, Layer
+
+train=[]
+with open('train_sparse_mat.dat', 'rb') as infile:
+    train = pickle.load(infile)
+
+labels = pd.read_csv('labels.csv',index_col=False,header=None)
+
+labels = np.array(labels).astype('int')
+
+test=[]
+with open('test_sparse_mat.dat', 'rb') as infile:
+    test = pickle.load(infile)
+
+
+nn = Classifier(
+    layers=[
+        Layer("Tanh", units=100),
+        Layer("Sigmoid")],
+    learning_rate=0.02,
+    n_iter=40,
+#    valid_set=(train,labels),
+    n_stable=20,
+    debug=True,
+    verbose=True)
+
+nn.fit(train, labels)
+
+pickle.dump(nn, open('nn10040Common.pkl', 'wb'))
+
+preds = nn.predict_proba(test)
+preds = pd.DataFrame(preds)
+print "writing to xgbSolWithUpcLen.csv"
+ss=pd.read_csv('sample_submission.csv')
+preds.columns = ss.columns[1:]
+preds['VisitNumber'] = ss['VisitNumber']
+preds.set_index('VisitNumber', inplace=True)
+preds.to_csv("nnSol10040Common.csv")
+
+##########################################################################
